@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-01
+
+### Added
+- `copilot-termux-update` CLI tool installed to `$PREFIX/bin/copilot-termux-update` for one-command updates of the setup repository, wrapper scripts, glibc hooks, and upstream Copilot engine.
+- `setup.sh update` action alias.
+- Added self-test check verifying `copilot-termux-update` presence and permissions (15 total checks).
+
+### Changed
+- Always enforce `--force` reinstallation of `@github/copilot-linux-arm64` during setup/updates to keep native binaries in lockstep with `@github/copilot`.
+- Documented update commands in `README.md`.
+
 ## [2.0.0] - 2026-11-01
 
 ### Added

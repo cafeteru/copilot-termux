@@ -12,7 +12,8 @@
 # (ld-linux-aarch64.so.1) directly on @github/copilot-linux-arm64/copilot.
 #
 # Usage:
-#   bash setup.sh              # Install/update Copilot CLI
+#   bash setup.sh              # Install Copilot CLI
+#   bash setup.sh update       # Update Copilot CLI and setup components
 #   bash setup.sh self-test    # Verify existing installation
 #
 # Based on: https://github.com/github/copilot-cli/issues/3333
@@ -123,7 +124,7 @@ install_native() {
     echo "Termux: ${TERMUX_VERSION:-unknown}"
     echo ""
 
-    if [ -t 0 ]; then
+    if [ -z "${NONINTERACTIVE:-}" ] && [ -t 0 ]; then
         read -p "Press Enter to continue or Ctrl+C to abort..."
     fi
 
@@ -192,17 +193,15 @@ REPO
     fi
 
     # Because Termux reports process.platform === "android", npm skips optional
-    # dependencies targeting linux. Install @github/copilot-linux-arm64 with --force.
+    # dependencies targeting linux. Ensure @github/copilot-linux-arm64 is installed with --force.
     NPM_ROOT="$(npm root -g)"
     COPILOT_BIN="$NPM_ROOT/$PLATFORM_PKG/copilot"
 
-    if [ ! -x "$COPILOT_BIN" ]; then
-        print_info "Installing platform package $PLATFORM_PKG with --force..."
-        npm install -g --force "$PLATFORM_PKG" || {
-            print_error "Failed to install platform package $PLATFORM_PKG"
-            exit 1
-        }
-    fi
+    print_info "Ensuring platform package $PLATFORM_PKG is installed..."
+    npm install -g --force "$PLATFORM_PKG" || {
+        print_error "Failed to install platform package $PLATFORM_PKG"
+        exit 1
+    }
 
     if [ ! -x "$COPILOT_BIN" ]; then
         print_error "Copilot native binary not found at $COPILOT_BIN"
@@ -392,6 +391,42 @@ EOF
     chmod +x "$PREFIX/bin/copilot"
     print_success "copilot launcher created at $PREFIX/bin/copilot"
 
+    rm -f "$PREFIX/bin/copilot-termux-update"
+    cat > "$PREFIX/bin/copilot-termux-update" << 'EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+set -e
+
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+REPO_DIR="${COPILOT_TERMUX_DIR:-$HOME/copilot-termux-setup}"
+RAW_SETUP_URL="https://raw.githubusercontent.com/cafeteru/copilot-termux-setup/main/setup.sh"
+
+echo "=== Updating Copilot Termux Setup ==="
+
+export NONINTERACTIVE=1
+
+# 1. Update installer and scripts
+if [ -d "$REPO_DIR/.git" ]; then
+    echo "Updating repository at $REPO_DIR..."
+    git -C "$REPO_DIR" pull --ff-only origin main 2>/dev/null || {
+        echo "Notice: git pull skipped or failed; running setup with current repository files" >&2
+    }
+    bash "$REPO_DIR/setup.sh" install
+else
+    echo "Downloading and running latest setup.sh from GitHub..."
+    curl -fsSL "$RAW_SETUP_URL" | bash
+fi
+
+# 2. Check for Copilot CLI runtime updates
+if command -v copilot >/dev/null 2>&1; then
+    echo "Checking for Copilot engine updates..."
+    copilot update || true
+fi
+
+echo "=== Copilot update completed successfully! ==="
+EOF
+    chmod +x "$PREFIX/bin/copilot-termux-update"
+    print_success "copilot-termux-update created at $PREFIX/bin/copilot-termux-update"
+
     ############################################################################
     # Verify
     ############################################################################
@@ -406,9 +441,10 @@ EOF
     echo "  • Preload hook at $PRELOAD_CJS"
     echo "  • Shell wrapper at $SHELL_WRAPPER"
     echo "  • Launcher at $PREFIX/bin/copilot"
+    echo "  • Updater tool at $PREFIX/bin/copilot-termux-update"
     echo ""
-    echo "To update Copilot, re-run:"
-    echo "  bash setup.sh"
+    echo "To update Copilot and setup components in the future, run:"
+    echo "  copilot-termux-update"
     echo ""
     echo "Next steps:"
     echo "  1. Launch Copilot: copilot"
@@ -454,6 +490,7 @@ run_self_test() {
     run_cmd "Preload hook present" test -f "$PRELOAD_CJS"
     run_cmd "Shell wrapper present" test -x "$SHELL_WRAPPER"
     run_cmd "Termux launcher present" test -x "$PREFIX/bin/copilot"
+    run_cmd "copilot-termux-update tool present" test -x "$PREFIX/bin/copilot-termux-update"
     run_cmd "Shell wrapper restores LD_PRELOAD, TMPDIR and DBUS guard" \
         env -u LD_PRELOAD -u TMPDIR -u DBUS_SESSION_BUS_ADDRESS "$SHELL_WRAPPER" -c \
         '[ -n "${LD_PRELOAD:-}" ] && [ "$TMPDIR" = "'"$PREFIX"'/tmp" ] && [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]'
@@ -496,11 +533,18 @@ case "$ACTION" in
     install|native|run)
         install_native
         ;;
+    update)
+        if [ -x "$PREFIX/bin/copilot-termux-update" ]; then
+            exec "$PREFIX/bin/copilot-termux-update"
+        else
+            install_native
+        fi
+        ;;
     self-test)
         run_self_test
         ;;
     *)
-        echo "Usage: bash setup.sh [install|self-test]" >&2
+        echo "Usage: bash setup.sh [install|update|self-test]" >&2
         exit 1
         ;;
 esac
