@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-01
+
 ### Added
 - `copilot-termux-update` CLI tool installed to `$PREFIX/bin/copilot-termux-update` for one-command updates of the setup repository, wrapper scripts, glibc hooks, and upstream Copilot engine.
 - `setup.sh update` action alias.
