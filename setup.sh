@@ -38,6 +38,7 @@ PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 GLIBC_PREFIX="${PREFIX}/glibc"
 LD_SO="${GLIBC_PREFIX}/lib/ld-linux-aarch64.so.1"
 PRELOAD_CJS="${GLIBC_PREFIX}/etc/copilot-termux-preload.cjs"
+SHELL_WRAPPER="${GLIBC_PREFIX}/libexec/copilot-shell/bash"
 PLATFORM_PKG="@github/copilot-linux-arm64"
 COPILOT_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/copilot/pkg/linux-arm64"
 
@@ -142,7 +143,8 @@ install_native() {
     pkg install -y termux-keyring 2>/dev/null || true
 
     ensure_pkg ca-certificates
-    mkdir -p "$PREFIX/etc/tls/certs"
+    ensure_pkg resolv-conf
+    mkdir -p "$PREFIX/etc/tls/certs" "$PREFIX/tmp"
     ensure_pkg nodejs node
     ensure_pkg ripgrep rg
 
@@ -209,10 +211,24 @@ REPO
     print_success "Copilot native binary installed at $COPILOT_BIN"
 
     ############################################################################
-    # Step 3: Create Termux runtime preload hook
+    # Step 3: Create Termux runtime preload hook and shell wrapper
     ############################################################################
 
-    print_step "Step 3/5: Creating Termux runtime preload hook"
+    print_step "Step 3/5: Creating Termux runtime preload hook and shell wrapper"
+
+    mkdir -p "$(dirname "$SHELL_WRAPPER")"
+    cat > "$SHELL_WRAPPER" << 'EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+export PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+export TMPDIR="${TMPDIR:-$PREFIX/tmp}"
+export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-disabled:}"
+if [ -f "$PREFIX/lib/libtermux-exec-ld-preload.so" ]; then
+    export LD_PRELOAD="$PREFIX/lib/libtermux-exec-ld-preload.so"
+fi
+exec "$PREFIX/bin/bash" "$@"
+EOF
+    chmod +x "$SHELL_WRAPPER"
+    print_success "Termux shell wrapper created at $SHELL_WRAPPER"
 
     mkdir -p "$(dirname "$PRELOAD_CJS")"
     cat > "$PRELOAD_CJS" << 'EOF'
@@ -227,6 +243,7 @@ const GLIBC_LIB = `${GLIBC_PREFIX}/lib`;
 const TERMUX_EXEC_SO = `${PREFIX}/lib/libtermux-exec-ld-preload.so`;
 const BASH_BIN = `${PREFIX}/bin/bash`;
 const SH_BIN = `${PREFIX}/bin/sh`;
+const SHELL_WRAPPER = `${GLIBC_PREFIX}/libexec/copilot-shell/bash`;
 const COPILOT_LAUNCHER = `${PREFIX}/bin/copilot`;
 
 // 1. Point process.execPath and argv[0] to the Termux launcher
@@ -239,18 +256,21 @@ if (process.argv[0] && process.argv[0].includes('ld-linux-aarch64')) {
   process.argv[0] = COPILOT_LAUNCHER;
 }
 
-// 2. Ensure SHELL and COPILOT_BASH_PATH point to Termux bash
-if (!process.env.SHELL || !fs.existsSync(process.env.SHELL)) {
-  process.env.SHELL = BASH_BIN;
+// 2. Ensure Termux environment defaults (TMPDIR, D-Bus keyring guard, SHELL, COPILOT_BASH_PATH)
+if (!process.env.TMPDIR || process.env.TMPDIR === '/tmp') {
+  process.env.TMPDIR = `${PREFIX}/tmp`;
 }
-if (!process.env.COPILOT_BASH_PATH) {
-  process.env.COPILOT_BASH_PATH = BASH_BIN;
+if (!process.env.DBUS_SESSION_BUS_ADDRESS) {
+  process.env.DBUS_SESSION_BUS_ADDRESS = 'disabled:';
 }
+const targetShell = fs.existsSync(SHELL_WRAPPER) ? SHELL_WRAPPER : BASH_BIN;
+process.env.SHELL = targetShell;
+process.env.COPILOT_BASH_PATH = targetShell;
 
 // 3. Rewrite /bin/* and /usr/bin/* paths and wrap glibc ELF binaries in child_process
 function rewriteFile(file) {
   if (typeof file !== 'string') return file;
-  if (file === '/bin/bash' || file === '/usr/bin/bash') return BASH_BIN;
+  if (file === '/bin/bash' || file === '/usr/bin/bash') return targetShell;
   if (file === '/bin/sh' || file === '/usr/bin/sh') return SH_BIN;
   if (file.startsWith('/bin/') || file.startsWith('/usr/bin/')) {
     const candidate = `${PREFIX}/bin/${file.split('/').pop()}`;
@@ -271,6 +291,11 @@ cp.ChildProcess.prototype.spawn = function (options) {
       const target = options.file;
       options.file = LD_SO;
       options.args = [LD_SO, '--library-path', GLIBC_LIB, target, ...(options.args ? options.args.slice(1) : [])];
+      if (Array.isArray(options.envPairs)) {
+        options.envPairs = options.envPairs.filter(
+          (p) => !p.startsWith('LD_PRELOAD=') && !p.startsWith('LD_LIBRARY_PATH=')
+        );
+      }
     } else {
       const rewritten = rewriteFile(options.file);
       if (rewritten !== options.file) {
@@ -308,7 +333,7 @@ EOF
 
     print_step "Step 4/5: Extracting bundled Copilot package"
 
-    if env -u LD_PRELOAD COPILOT_SEA_EXTRACT_ONLY=1 "$LD_SO" --library-path "$GLIBC_PREFIX/lib" "$COPILOT_BIN"; then
+    if env -u LD_PRELOAD -u LD_LIBRARY_PATH COPILOT_SEA_EXTRACT_ONLY=1 "$LD_SO" --library-path "$GLIBC_PREFIX/lib" "$COPILOT_BIN"; then
         print_success "Bundled package extracted to $COPILOT_CACHE_DIR"
     else
         print_error "Failed to extract bundled package from $COPILOT_BIN"
@@ -338,6 +363,7 @@ PREFIX="\${PREFIX:-/data/data/com.termux/files/usr}"
 GLIBC_PREFIX="\${PREFIX}/glibc"
 LD_SO="\${GLIBC_PREFIX}/lib/ld-linux-aarch64.so.1"
 PRELOAD_CJS="\${GLIBC_PREFIX}/etc/copilot-termux-preload.cjs"
+SHELL_WRAPPER="\${GLIBC_PREFIX}/libexec/copilot-shell/bash"
 COPILOT_BIN="\${PREFIX}/lib/node_modules/@github/copilot-linux-arm64/copilot"
 COPILOT_CACHE_DIR="\${XDG_CACHE_HOME:-\$HOME/.cache}/copilot/pkg/linux-arm64"
 
@@ -350,12 +376,16 @@ if [ -d "\$COPILOT_CACHE_DIR" ]; then
     done
 fi
 
+export PREFIX="\$PREFIX"
+export TMPDIR="\${TMPDIR:-\$PREFIX/tmp}"
 export SSL_CERT_FILE="\$PREFIX/etc/tls/cert.pem"
 export SSL_CERT_DIR="\$PREFIX/etc/tls/certs"
 export NODE_EXTRA_CA_CERTS="\$PREFIX/etc/tls/cert.pem"
-export SHELL="\${SHELL:-\$PREFIX/bin/bash}"
-export COPILOT_BASH_PATH="\$PREFIX/bin/bash"
+export DBUS_SESSION_BUS_ADDRESS="\${DBUS_SESSION_BUS_ADDRESS:-disabled:}"
+export SHELL="\$SHELL_WRAPPER"
+export COPILOT_BASH_PATH="\$SHELL_WRAPPER"
 unset LD_PRELOAD
+unset LD_LIBRARY_PATH
 
 exec "\$LD_SO" --library-path "\$GLIBC_PREFIX/lib" "\$COPILOT_BIN" "\$@"
 EOF
@@ -366,16 +396,7 @@ EOF
     # Verify
     ############################################################################
 
-    print_header "Verifying Installation"
-
-    if COPILOT_VERSION=$("$PREFIX/bin/copilot" --version 2>&1); then
-        print_success "copilot --version:"
-        echo "$COPILOT_VERSION"
-    else
-        print_error "copilot --version failed:"
-        echo "$COPILOT_VERSION"
-        exit 1
-    fi
+    run_self_test
 
     print_header "Installation Complete!"
 
@@ -383,6 +404,7 @@ EOF
     echo "  • @github/copilot-linux-arm64 at $COPILOT_BIN"
     echo "  • Extracted runtime at $COPILOT_CACHE_DIR"
     echo "  • Preload hook at $PRELOAD_CJS"
+    echo "  • Shell wrapper at $SHELL_WRAPPER"
     echo "  • Launcher at $PREFIX/bin/copilot"
     echo ""
     echo "To update Copilot, re-run:"
@@ -424,16 +446,39 @@ run_self_test() {
     }
 
     run_cmd "glibc linker exists" test -f "$LD_SO"
+    run_cmd "TLS cert.pem exists" test -f "$PREFIX/etc/tls/cert.pem"
+    run_cmd "TLS certs directory exists" test -d "$PREFIX/etc/tls/certs"
+    run_cmd "resolv.conf exists" test -f "$PREFIX/etc/resolv.conf"
+    run_cmd "Termux tmp directory writable" test -w "$PREFIX/tmp"
     run_cmd "Copilot SEA binary present" test -x "$COPILOT_BIN"
     run_cmd "Preload hook present" test -f "$PRELOAD_CJS"
+    run_cmd "Shell wrapper present" test -x "$SHELL_WRAPPER"
     run_cmd "Termux launcher present" test -x "$PREFIX/bin/copilot"
+    run_cmd "Shell wrapper restores LD_PRELOAD, TMPDIR and DBUS guard" \
+        env -u LD_PRELOAD -u TMPDIR -u DBUS_SESSION_BUS_ADDRESS "$SHELL_WRAPPER" -c \
+        '[ -n "${LD_PRELOAD:-}" ] && [ "$TMPDIR" = "'"$PREFIX"'/tmp" ] && [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]'
+    run_cmd "Shell wrapper executes #!/usr/bin/env shebang without parent LD_PRELOAD" \
+        env -u LD_PRELOAD "$SHELL_WRAPPER" -c \
+        'f=$(mktemp) && printf "#!/usr/bin/env sh\necho shebang-ok\n" > "$f" && chmod +x "$f" && out=$("$f") && rm -f "$f" && [ "$out" = "shebang-ok" ]'
+    run_cmd "Preload hook rewrites /bin/sh and sets Termux env" \
+        env -u TMPDIR -u DBUS_SESSION_BUS_ADDRESS PRELOAD_CJS="$PRELOAD_CJS" node -e '
+            require(process.env.PRELOAD_CJS);
+            const assert = require("node:assert");
+            const cp = require("node:child_process");
+            assert.strictEqual(process.execPath, (process.env.PREFIX || "/data/data/com.termux/files/usr") + "/bin/copilot");
+            assert.ok(process.env.TMPDIR && process.env.TMPDIR.endsWith("/tmp") && process.env.TMPDIR !== "/tmp");
+            assert.ok(process.env.DBUS_SESSION_BUS_ADDRESS);
+            assert.ok(process.env.COPILOT_BASH_PATH.endsWith("/copilot-shell/bash"));
+            const res = cp.spawnSync("/bin/sh", ["-c", "echo preload-ok"], { encoding: "utf8" });
+            assert.strictEqual(res.stdout.trim(), "preload-ok");
+        '
     run_cmd "copilot --binary-version runs" "$PREFIX/bin/copilot" --binary-version
     run_cmd "copilot --version runs" "$PREFIX/bin/copilot" --version
 
     echo ""
     if [ "$FAILED" -eq 0 ]; then
         print_success "Self-test passed"
-        exit 0
+        return 0
     else
         print_error "Self-test failed ($FAILED check(s))"
         print_info "Re-run the installer to repair: bash setup.sh"

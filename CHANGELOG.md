@@ -5,41 +5,19 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
-- Dual installation strategy: `proot-distro` for reliable execution on modern Android and `glibc-native` for lighter setups on older devices.
-- Automatic strategy selection based on Android SDK version.
-- Termux launcher at `$PREFIX/bin/copilot` that enters the proot environment automatically.
-- Internal proot wrapper at `/usr/local/bin/copilot-cli` to avoid recursive launcher resolution.
-- `bash setup.sh self-test` subcommand that verifies a proot install end-to-end without mutating state.
-- README link to this changelog.
-- Repository documentation updates covering installation, updates, and troubleshooting.
+- Pure native Termux installation without `proot-distro` or `patchelf`, executing `@github/copilot-linux-arm64/copilot` directly via `$PREFIX/glibc/lib/ld-linux-aarch64.so.1`.
+- Bionic shell wrapper (`$PREFIX/glibc/libexec/copilot-shell/bash`) configured as `COPILOT_BASH_PATH` and `SHELL` so shells spawned directly by Copilot's Rust engine (`runtime.node`) restore `LD_PRELOAD` (`libtermux-exec-ld-preload.so`), `TMPDIR=$PREFIX/tmp`, and `DBUS_SESSION_BUS_ADDRESS=disabled:`.
+- Automatic `resolv-conf` package installation and `$PREFIX/etc/tls/certs` + `$PREFIX/tmp` directory initialization.
+- Expanded 14-check `self-test` verification suite (`bash setup.sh self-test`), now also executed automatically at the end of `bash setup.sh`.
 
 ### Changed
-- Reworked the installer to match the current `@github/copilot` package layout, which now ships platform-specific optional packages instead of the older Node-only flow.
-- Switched the proot installation flow to force Debian's own `/usr/bin/node` and `/usr/bin/npm` instead of allowing Termux's Android Node.js binary to leak through `PATH`.
-- Updated the proot launcher to call the internal wrapper by absolute path.
-- Made `bash setup.sh proot` safe to rerun against an existing container.
-- Updated the README to reflect the final working behavior and recovery steps.
+- Removed `proot-distro` dependency and container overhead in favor of native glibc execution on Termux.
+- Updated `copilot-termux-preload.cjs` to strip `LD_PRELOAD` and `LD_LIBRARY_PATH` when spawning glibc ELF binaries while preserving `libtermux-exec` for Bionic child processes.
+- Updated `README.md` with technical architecture and `self-test` coverage details.
 
 ### Fixed
-- Dead or outdated glibc repository handling.
-- Missing executable-bit workflow confusion by documenting `bash setup.sh` usage.
-- Non-interactive apt handling inside proot.
-- Missing `bash` inside the proot environment.
-- Heredoc delimiter mismatch that caused the rest of the script to be parsed into the launcher block.
-- Recursive `copilot` launcher loop caused by Termux paths being visible inside proot.
-- Broken no-argument launcher execution caused by an unnecessary `shift`.
-- False platform detection where Copilot saw `android arm64` instead of `linux arm64`.
-- Missing optional platform package installation for `@github/copilot`.
-- Overly broad `proot-distro install ... || true` behavior that hid real install failures.
-- Hardcoded `debian` launcher value even though `PROOT_DISTRO` is configurable.
-
-### Known Limitations
-- The `glibc-native` path may still fail on newer Android releases because SELinux can block glibc loader execution.
-- The proot strategy depends on network access to external package sources during setup.
-- Copilot CLI behavior can still be constrained by Android memory pressure during larger sessions.
-
-### Possible Improvements
-- Add an explicit `--update` mode that refreshes Copilot and regenerates wrappers without re-running the full install flow.
-- Reduce dependence on NodeSource if Debian's packaged Node.js becomes sufficient for the required Copilot version.
-- Add clearer handling for package-source warnings such as the Termux glibc repository signature notice.
-- Consider logging setup output to a file for easier diagnosis on-device.
+- Unexpected Copilot session shutdowns (`SIGTERM`/`SIGHUP`) caused by orphaned `dbus-daemon --fork` processes hitting Android's Phantom Process Killer limit when CLI tools (`glab`, `gh`, keyring checks) probed D-Bus without an active bus.
+- Failed shebang execution (`#!/usr/bin/env: bad interpreter`) inside Copilot's `bash` tool caused by `runtime.node` (Rust) spawning shells via native `fork/exec` without `LD_PRELOAD`.
+- `Permission denied` errors on `/tmp` during tool execution by enforcing `TMPDIR=$PREFIX/tmp`.
+- Missing OS TLS trust anchor directory warning (`$PREFIX/etc/tls/certs`).
+- `Segmentation fault` (exit 139) on Android 14+ / SDK 35 caused by `patchelf` corrupting Node SEA ELF headers.

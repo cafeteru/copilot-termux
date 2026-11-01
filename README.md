@@ -6,10 +6,11 @@ Setup script to install **GitHub Copilot CLI** directly on **Termux** (Android/a
 
 GitHub Copilot CLI ships a self-contained Node.js Single Executable Application (`@github/copilot-linux-arm64/copilot`) and native Rust addons (`runtime.node`, `cli-native.node`, `copilot-runtime`) compiled against **glibc**, which is incompatible with Android's Bionic libc.
 
-Why the upstream `glibc` strategy failed on modern Android (Android 14/15+):
-1. Running `patchelf` on Node/SEA binaries corrupts ELF program headers (`PHDR`), causing `Segmentation fault` (exit 139) on Android 14+.
-2. Termux's `LD_PRELOAD` (`libtermux-exec`) is compiled for Bionic and crashes glibc processes if not unset before invoking `ld-linux-aarch64.so.1`, while child processes spawned by Copilot need `/bin/bash` (`COPILOT_BASH_PATH` / `SHELL`) and `LD_PRELOAD` restored.
-3. `@github/copilot` now ships as a self-extracting SEA binary in `@github/copilot-linux-arm64/copilot` (extracting to `~/.cache/copilot/pkg/linux-arm64/<version>/`), rather than plain JS files in `@github/copilot`.
+Why earlier approaches failed on modern Android (Android 14/15+):
+1. **ELF corruption with `patchelf`:** Running `patchelf` on Node/SEA binaries corrupts ELF program headers (`PHDR`), causing `Segmentation fault` (exit 139) on Android 14+.
+2. **Bionic `LD_PRELOAD` vs Rust subprocesses:** Termux's `LD_PRELOAD` (`libtermux-exec-ld-preload.so`) is compiled for Bionic and crashes glibc processes if not unset before invoking `ld-linux-aarch64.so.1`. However, Copilot's `bash` tool is spawned directly from its Rust engine (`runtime.node`) rather than Node's `child_process`, so child shells need a Bionic shell wrapper (`$PREFIX/glibc/libexec/copilot-shell/bash`) to restore `LD_PRELOAD` (enabling `#!/usr/bin/env` and `/bin/sh` shebangs) without leaking it into glibc binaries.
+3. **Android Phantom Process Killer & D-Bus keyring leaks:** Without a D-Bus session guard, CLI tools (`gh`, `glab`, keyring probes) auto-spawn orphaned `dbus-daemon --fork` processes on every invocation, hitting Android's 32-child phantom process limit and terminating the Copilot session mid-turn.
+4. **Termux paths & DNS:** Android lacks a writable `/tmp`, `/etc/resolv.conf`, and standard `/etc/ssl` paths; Copilot requires `TMPDIR=$PREFIX/tmp`, `resolv-conf` (`$PREFIX/etc/resolv.conf`), and `$PREFIX/etc/tls/cert.pem` + `$PREFIX/etc/tls/certs`.
 
 This script runs `@github/copilot-linux-arm64/copilot` directly via Termux's native glibc dynamic linker (`$PREFIX/glibc/lib/ld-linux-aarch64.so.1`) without `proot` and without `patchelf`.
 
@@ -25,11 +26,23 @@ cd copilot-termux-setup
 bash setup.sh
 ```
 
+The installer automatically runs the full 14-check `self-test` verification suite before finishing.
+
 ### Verify an existing install
+
+You can also run the verification suite at any time without modifying the installation:
 
 ```bash
 bash setup.sh self-test
 ```
+
+What `self-test` checks:
+- `ld-linux-aarch64.so.1`, `cert.pem`, `etc/tls/certs`, `etc/resolv.conf`, and writable `$PREFIX/tmp`
+- Copilot SEA binary, Node preload hook (`copilot-termux-preload.cjs`), Bionic shell wrapper (`copilot-shell/bash`), and `$PREFIX/bin/copilot` launcher
+- Shell wrapper restoration of `LD_PRELOAD`, `TMPDIR`, and `DBUS_SESSION_BUS_ADDRESS` when spawned from an clean-env parent (simulating `runtime.node`)
+- Shebang execution (`#!/usr/bin/env sh`) through the shell wrapper
+- Node preload hook `/bin/sh` path rewriting and environment setup
+- `copilot --binary-version` and `copilot --version` execution
 
 ## Usage
 
@@ -44,6 +57,8 @@ On first launch, use `/login` to authenticate with your GitHub account.
 ```bash
 bash setup.sh
 ```
+
+See [CHANGELOG.md](CHANGELOG.md) for release history and technical details.
 
 ## License
 
