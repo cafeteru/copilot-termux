@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - `copilot-termux-update` automatically clears pending update notices upon completion.
+- Documented one-line `curl` installer in `README.md`.
 
 ## [2.1.0] - 2026-11-01
 

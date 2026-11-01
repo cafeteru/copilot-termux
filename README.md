@@ -21,7 +21,16 @@ This script runs `@github/copilot-linux-arm64/copilot` directly via Termux's nat
 
 ## Installation
 
+### One-line install (Recommended)
+
 ```bash
+curl -fsSL https://raw.githubusercontent.com/cafeteru/copilot-termux-setup/main/setup.sh | bash
+```
+
+### Or clone and run locally
+
+```bash
+git clone https://github.com/cafeteru/copilot-termux-setup.git
 cd copilot-termux-setup
 bash setup.sh
 ```
