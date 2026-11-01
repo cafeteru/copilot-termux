@@ -26,7 +26,7 @@ cd copilot-termux-setup
 bash setup.sh
 ```
 
-The installer automatically runs the full 14-check `self-test` verification suite before finishing.
+The installer automatically runs the full 15-check `self-test` verification suite before finishing.
 
 ### Verify an existing install
 
@@ -38,7 +38,7 @@ bash setup.sh self-test
 
 What `self-test` checks:
 - `ld-linux-aarch64.so.1`, `cert.pem`, `etc/tls/certs`, `etc/resolv.conf`, and writable `$PREFIX/tmp`
-- Copilot SEA binary, Node preload hook (`copilot-termux-preload.cjs`), Bionic shell wrapper (`copilot-shell/bash`), and `$PREFIX/bin/copilot` launcher
+- Copilot SEA binary, Node preload hook (`copilot-termux-preload.cjs`), Bionic shell wrapper (`copilot-shell/bash`), `$PREFIX/bin/copilot` launcher, and `copilot-termux-update` tool
 - Shell wrapper restoration of `LD_PRELOAD`, `TMPDIR`, and `DBUS_SESSION_BUS_ADDRESS` when spawned from an clean-env parent (simulating `runtime.node`)
 - Shebang execution (`#!/usr/bin/env sh`) through the shell wrapper
 - Node preload hook `/bin/sh` path rewriting and environment setup
@@ -52,10 +52,24 @@ copilot
 
 On first launch, use `/login` to authenticate with your GitHub account.
 
-## Updating Copilot
+## Updating
+
+To update Copilot CLI and all Termux setup components in one command:
 
 ```bash
-bash setup.sh
+copilot-termux-update
+```
+
+Or via `setup.sh`:
+
+```bash
+bash setup.sh update
+```
+
+To check for upstream Copilot runtime updates only:
+
+```bash
+copilot update
 ```
 
 See [CHANGELOG.md](CHANGELOG.md) for release history and technical details.
