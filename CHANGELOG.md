@@ -2,7 +2,9 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased
+## [Unreleased]
+
+## [2.0.0] - 2026-11-01
 
 ### Added
 - Pure native Termux installation without `proot-distro` or `patchelf`, executing `@github/copilot-linux-arm64/copilot` directly via `$PREFIX/glibc/lib/ld-linux-aarch64.so.1`.
