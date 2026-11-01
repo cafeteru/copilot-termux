@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-11-01
+
+### Added
+- Non-blocking background update checker in `$PREFIX/bin/copilot`: checks GitHub releases once per 24 hours asynchronously without delaying launch or blocking offline usage.
+- On-screen notification in interactive terminals when a new version of `copilot-termux-setup` is available.
+- Added self-test check verifying background update check presence in launcher (16 total checks).
+
+### Changed
+- `copilot-termux-update` automatically clears pending update notices upon completion.
+
 ## [2.1.0] - 2026-11-01
 
 ### Added
