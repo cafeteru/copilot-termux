@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-11-11
+
+### Changed
+- Renamed project to `copilot-termux` to reflect ongoing adaptation and enhancements of GitHub Copilot CLI for Termux across releases.
+- Updated repository URLs, installation commands, updater endpoints, and documentation.
+- Added backwards-compatible fallback resolution for `$HOME/copilot-termux` and `$HOME/copilot-termux-setup` directories and release endpoints in launcher and `copilot-termux-update`.
+
 ## [2.3.2] - 2026-11-11
 
 ### Fixed
