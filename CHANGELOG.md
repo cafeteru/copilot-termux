@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-11-11
+
+### Added
+- Interactive startup update prompt: when launching `copilot`, checks both upstream Copilot CLI npm releases and `copilot-termux-setup` repository releases.
+- Prompts user `¿Deseas actualizar ahora? [s/N]` upon detecting an update, and automatically executes `copilot-termux-update` before launching the new version.
+- Configurable check interval via `COPILOT_UPDATE_CHECK_INTERVAL` (default 3600s), manual check force via `COPILOT_CHECK_UPDATE=1`, and bypass via `COPILOT_NO_UPDATE_CHECK=1`.
+
 ## [2.2.0] - 2026-11-01
 
 ### Added
