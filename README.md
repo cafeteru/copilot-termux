@@ -1,6 +1,6 @@
-# GitHub Copilot CLI Setup for Termux (Pure Native - No PRoot)
+# copilot-termux: GitHub Copilot CLI for Termux (Pure Native - No PRoot)
 
-Setup script to install **GitHub Copilot CLI** directly on **Termux** (Android/aarch64) without PRoot or containers.
+Native adaptation and optimization of **GitHub Copilot CLI** directly on **Termux** (Android/aarch64) without PRoot or containers.
 
 ## Background
 
@@ -25,14 +25,14 @@ This script runs `@github/copilot-linux-arm64/copilot` directly via Termux's nat
 ### One-line install (Recommended)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cafeteru/copilot-termux-setup/main/setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/cafeteru/copilot-termux/main/setup.sh | bash
 ```
 
 ### Or clone and run locally
 
 ```bash
-git clone https://github.com/cafeteru/copilot-termux-setup.git
-cd copilot-termux-setup
+git clone https://github.com/cafeteru/copilot-termux.git
+cd copilot-termux
 bash setup.sh
 ```
 
@@ -62,11 +62,11 @@ copilot
 
 On first launch, use `/login` to authenticate with your GitHub account.
 
-When starting in an interactive terminal, the launcher automatically checks if an update is available (for upstream Copilot CLI or `copilot-termux-setup`) and prompts whether to update immediately (`¿Deseas actualizar ahora? [s/N]`). If accepted, it runs `copilot-termux-update` and restarts into the updated version.
+When starting in an interactive terminal, the launcher automatically checks if an update is available (for upstream Copilot CLI or `copilot-termux`) and prompts whether to update immediately (`¿Deseas actualizar ahora? [s/N]`). If accepted, it runs `copilot-termux-update` and restarts into the updated version.
 
 ## Updating
 
-To update Copilot CLI and all Termux setup components in one command:
+To update Copilot CLI and all `copilot-termux` components in one command:
 
 ```bash
 copilot-termux-update
