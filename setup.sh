@@ -35,7 +35,7 @@ if [ "$ARCH" != "aarch64" ] && [ "$ARCH" != "arm64" ]; then
 fi
 
 # Configuration
-SETUP_VERSION="2.3.1"
+SETUP_VERSION="2.3.2"
 PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 GLIBC_PREFIX="${PREFIX}/glibc"
 LD_SO="${GLIBC_PREFIX}/lib/ld-linux-aarch64.so.1"
@@ -420,11 +420,15 @@ if [ "\$skip_check" -eq 0 ] && [ -t 0 ] && [ -t 1 ] && [ -z "\${NONINTERACTIVE:-
             curr_npm="\$(grep -m 1 '"version"' "\$PREFIX/lib/node_modules/@github/copilot/package.json" 2>/dev/null | cut -d '"' -f 4 || true)"
             clean_repo="\${latest_repo#v}"
 
+            ver_gt() {
+                [ "\$1" != "\$2" ] && [ "\$(printf '%s\n%s' "\$1" "\$2" | sort -V | head -n 1)" = "\$2" ]
+            }
+
             update_reason=""
-            if [ -n "\$latest_npm" ] && [ -n "\$curr_npm" ] && [ "\$latest_npm" != "\$curr_npm" ]; then
+            if [ -n "\$latest_npm" ] && [ -n "\$curr_npm" ] && ver_gt "\$latest_npm" "\$curr_npm"; then
                 update_reason="Copilot CLI: \$curr_npm -> \$latest_npm"
             fi
-            if [ -n "\$clean_repo" ] && [ "\$clean_repo" != "\$SETUP_VERSION" ]; then
+            if [ -n "\$clean_repo" ] && ver_gt "\$clean_repo" "\$SETUP_VERSION"; then
                 if [ -n "\$update_reason" ]; then
                     update_reason="\$update_reason | Setup: v\$SETUP_VERSION -> v\$clean_repo"
                 else
@@ -599,6 +603,7 @@ run_self_test() {
     run_cmd "Termux launcher present" test -x "$PREFIX/bin/copilot"
     run_cmd "copilot-termux-update tool present" test -x "$PREFIX/bin/copilot-termux-update"
     run_cmd "Launcher embeds update check and prompt" grep -q "setup_update_available" "$PREFIX/bin/copilot"
+    run_cmd "Launcher uses semver comparison for updates" grep -q "ver_gt" "$PREFIX/bin/copilot"
     run_cmd "Shell wrapper restores LD_PRELOAD, TMPDIR and DBUS guard" \
         env -u LD_PRELOAD -u TMPDIR -u DBUS_SESSION_BUS_ADDRESS "$SHELL_WRAPPER" -c \
         '[ -n "${LD_PRELOAD:-}" ] && [ "$TMPDIR" = "'"$PREFIX"'/tmp" ] && [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]'
