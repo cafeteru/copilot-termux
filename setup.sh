@@ -35,7 +35,7 @@ if [ "$ARCH" != "aarch64" ] && [ "$ARCH" != "arm64" ]; then
 fi
 
 # Configuration
-SETUP_VERSION="2.3.0"
+SETUP_VERSION="2.3.1"
 PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 GLIBC_PREFIX="${PREFIX}/glibc"
 LD_SO="${GLIBC_PREFIX}/lib/ld-linux-aarch64.so.1"
@@ -324,6 +324,20 @@ cp.spawnSync = function (file, args, options) {
   }
   return origSpawnSync.call(this, rewriteFile(file), args, options);
 };
+
+// 4. Enable Termux touch-scroll mouse tracking: Termux's TerminalEmulator ignores
+// DECSET 1003 (\x1b[?1003h, any-event mouse tracking) and only activates wheel
+// mouse events on DECSET 1000/1002. Without 1002h in alternate-screen mode, Termux
+// converts vertical touch swipes into Up/Down arrow keys (cycling prompt history).
+if (process.stdout && typeof process.stdout.write === 'function') {
+  const origStdoutWrite = process.stdout.write;
+  process.stdout.write = function (chunk, encoding, cb) {
+    if (typeof chunk === 'string' && chunk.includes('\x1b[?1003h') && !chunk.includes('\x1b[?1002h')) {
+      chunk = chunk.replaceAll('\x1b[?1003h', '\x1b[?1002h\x1b[?1003h');
+    }
+    return origStdoutWrite.call(this, chunk, encoding, cb);
+  };
+}
 EOF
     print_success "Preload hook created at $PRELOAD_CJS"
 
@@ -591,8 +605,17 @@ run_self_test() {
     run_cmd "Shell wrapper executes #!/usr/bin/env shebang without parent LD_PRELOAD" \
         env -u LD_PRELOAD "$SHELL_WRAPPER" -c \
         'f=$(mktemp) && printf "#!/usr/bin/env sh\necho shebang-ok\n" > "$f" && chmod +x "$f" && out=$("$f") && rm -f "$f" && [ "$out" = "shebang-ok" ]'
-    run_cmd "Preload hook rewrites /bin/sh and sets Termux env" \
+    run_cmd "Preload hook rewrites /bin/sh, sets Termux env and enables DECSET 1002 mouse scroll" \
         env -u TMPDIR -u DBUS_SESSION_BUS_ADDRESS PRELOAD_CJS="$PRELOAD_CJS" node -e '
+            let captured = "";
+            const origWrite = process.stdout.write.bind(process.stdout);
+            process.stdout.write = (chunk, enc, cb) => {
+                if (typeof chunk === "string" && chunk.includes("\x1b[?")) {
+                    captured += chunk;
+                    return true;
+                }
+                return origWrite(chunk, enc, cb);
+            };
             require(process.env.PRELOAD_CJS);
             const assert = require("node:assert");
             const cp = require("node:child_process");
@@ -602,6 +625,8 @@ run_self_test() {
             assert.ok(process.env.COPILOT_BASH_PATH.endsWith("/copilot-shell/bash"));
             const res = cp.spawnSync("/bin/sh", ["-c", "echo preload-ok"], { encoding: "utf8" });
             assert.strictEqual(res.stdout.trim(), "preload-ok");
+            process.stdout.write("\x1b[?1003h\x1b[?1006h");
+            assert.strictEqual(captured, "\x1b[?1002h\x1b[?1003h\x1b[?1006h");
         '
     run_cmd "copilot --binary-version runs" "$PREFIX/bin/copilot" --binary-version
     run_cmd "copilot --version runs" "$PREFIX/bin/copilot" --version
