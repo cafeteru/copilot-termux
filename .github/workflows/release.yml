@@ -1,0 +1,52 @@
+name: Auto Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'setup.sh'
+      - 'CHANGELOG.md'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check version and create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(grep -m 1 -oE 'SETUP_VERSION="[^"]+"' setup.sh | cut -d '"' -f 2)
+          TAG="v$VERSION"
+          echo "Target tag: $TAG"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists. Skipping."
+            exit 0
+          fi
+
+          python3 -c "
+          import re, sys
+          ver = sys.argv[1]
+          try:
+              with open('CHANGELOG.md', 'r') as f:
+                  text = f.read()
+              m = re.search(r'## \[?' + re.escape(ver) + r'\]?[^\n]*\n(.*?)(?=\n## \[|\Z)', text, re.DOTALL)
+              notes = m.group(1).strip() if m else f'Release {ver}'
+          except Exception:
+              notes = f'Release {ver}'
+          with open('release_notes.md', 'w') as out:
+              out.write(notes + '\n')
+          " "$VERSION"
+
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes-file release_notes.md
