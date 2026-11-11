@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-11-11
+
+### Fixed
+- Fixed touch scrolling in Termux: Copilot CLI enables mouse tracking using `MOUSE_ANY` (`\x1b[?1003h\x1b[?1006h`), which Termux's terminal emulator ignores. In alternate-screen mode, this caused Termux to translate finger swipe gestures into Up/Down arrow keys, cycling command history instead of scrolling the conversation. The preload hook now injects `\x1b[?1002h` alongside `\x1b[?1003h` so Termux activates mouse-wheel scroll events natively.
+- Added self-test verification for `DECSET 1002` injection on `stdout.write`.
+
 ## [2.3.0] - 2026-11-11
 
 ### Added
