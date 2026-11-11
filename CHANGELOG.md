@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.3.2] - 2026-11-11
+
+### Fixed
+- Fixed update detection in `$PREFIX/bin/copilot`: previously used inequality (`!=`), triggering downgrade notices when local versions were ahead of GitHub releases (e.g. `v2.3.0 -> v2.2.0`). Now compares versions semantically (`sort -V`) so update notices only trigger when a strictly newer release is detected.
+- Added self-test check verifying semver comparison in the launcher.
+
 ## [2.3.1] - 2026-11-11
 
 ### Fixed
