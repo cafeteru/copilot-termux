@@ -61,7 +61,7 @@ copilot
 
 On first launch, use `/login` to authenticate with your GitHub account.
 
-When starting, the launcher automatically checks in the background (at most once every 24 hours, non-blocking) if a new release of `copilot-termux-setup` is available and displays a warning with instructions if an update is found.
+When starting in an interactive terminal, the launcher automatically checks if an update is available (for upstream Copilot CLI or `copilot-termux-setup`) and prompts whether to update immediately (`¿Deseas actualizar ahora? [s/N]`). If accepted, it runs `copilot-termux-update` and restarts into the updated version.
 
 ## Updating
 

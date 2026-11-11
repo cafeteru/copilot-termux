@@ -35,7 +35,7 @@ if [ "$ARCH" != "aarch64" ] && [ "$ARCH" != "arm64" ]; then
 fi
 
 # Configuration
-SETUP_VERSION="2.2.0"
+SETUP_VERSION="2.3.0"
 PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 GLIBC_PREFIX="${PREFIX}/glibc"
 LD_SO="${GLIBC_PREFIX}/lib/ld-linux-aarch64.so.1"
@@ -370,31 +370,89 @@ COPILOT_CACHE_DIR="\${XDG_CACHE_HOME:-\$HOME/.cache}/copilot/pkg/linux-arm64"
 CHECK_FILE="\${XDG_CACHE_HOME:-\$HOME/.cache}/copilot/setup_update_available"
 LAST_CHECK="\${XDG_CACHE_HOME:-\$HOME/.cache}/copilot/last_setup_check"
 
-# Display notice if an update was found by a previous background check
-if [ -t 1 ] && [ -f "\$CHECK_FILE" ]; then
-    avail_ver="\$(cat "\$CHECK_FILE" 2>/dev/null || true)"
-    if [ -n "\$avail_ver" ] && [ "\$avail_ver" != "\$SETUP_VERSION" ] && [ "\$avail_ver" != "v\$SETUP_VERSION" ]; then
-        echo -e "\033[1;33m⚠ Nueva versión de copilot-termux-setup disponible: \$avail_ver. Ejecuta 'copilot-termux-update' para actualizar.\033[0m" >&2
-    fi
-fi
+# Check for updates and prompt user in interactive sessions
+skip_check=0
+case "\${1:-}" in
+    --version|-v|--binary-version|--help|-h|update)
+        skip_check=1
+        ;;
+esac
 
-# Background check for updates (non-blocking, runs at most once per 24 hours)
-now=\$(date +%s 2>/dev/null || echo 0)
-last=\$(stat -c %Y "\$LAST_CHECK" 2>/dev/null || echo 0)
-if [ "\$((now - last))" -ge 86400 ]; then
-    mkdir -p "\$(dirname "\$LAST_CHECK")"
-    touch "\$LAST_CHECK"
-    (
-        tag=\$(curl -fsSL --connect-timeout 2 -m 4 "https://api.github.com/repos/cafeteru/copilot-termux-setup/releases/latest" 2>/dev/null | grep -o '"tag_name": *"[^"]*"' | head -n 1 | cut -d '"' -f 4)
-        if [ -n "\$tag" ]; then
-            clean_tag="\${tag#v}"
-            if [ "\$clean_tag" != "\$SETUP_VERSION" ]; then
-                echo "\$tag" > "\$CHECK_FILE"
+if [ "\$skip_check" -eq 0 ] && [ -t 0 ] && [ -t 1 ] && [ -z "\${NONINTERACTIVE:-}" ] && [ "\${COPILOT_NO_UPDATE_CHECK:-0}" != "1" ]; then
+    now=\$(date +%s 2>/dev/null || echo 0)
+    last=\$(stat -c %Y "\$LAST_CHECK" 2>/dev/null || echo 0)
+    check_interval="\${COPILOT_UPDATE_CHECK_INTERVAL:-3600}"
+
+    if [ "\$((now - last))" -ge "\$check_interval" ] || [ "\${COPILOT_CHECK_UPDATE:-0}" = "1" ]; then
+        mkdir -p "\$(dirname "\$LAST_CHECK")"
+        touch "\$LAST_CHECK"
+
+        tmp_dir="\$(mktemp -d "\${TMPDIR:-\$PREFIX/tmp}/copilot-chk.XXXXXX" 2>/dev/null || mktemp -d 2>/dev/null || echo "")"
+        if [ -n "\$tmp_dir" ] && [ -d "\$tmp_dir" ]; then
+            (
+                curl -fsSL --connect-timeout 2 -m 3 "https://registry.npmjs.org/@github/copilot/latest" 2>/dev/null | \
+                    grep -o '"version":"[^"]*"' | head -n 1 | cut -d '"' -f 4 > "\$tmp_dir/npm"
+            ) &
+            (
+                curl -fsSL --connect-timeout 2 -m 3 "https://api.github.com/repos/cafeteru/copilot-termux-setup/releases/latest" 2>/dev/null | \
+                    grep -o '"tag_name": *"[^"]*"' | head -n 1 | cut -d '"' -f 4 > "\$tmp_dir/repo"
+            ) &
+            wait
+
+            latest_npm="\$(cat "\$tmp_dir/npm" 2>/dev/null || true)"
+            latest_repo="\$(cat "\$tmp_dir/repo" 2>/dev/null || true)"
+            rm -rf "\$tmp_dir"
+
+            curr_npm="\$(grep -m 1 '"version"' "\$PREFIX/lib/node_modules/@github/copilot/package.json" 2>/dev/null | cut -d '"' -f 4 || true)"
+            clean_repo="\${latest_repo#v}"
+
+            update_reason=""
+            if [ -n "\$latest_npm" ] && [ -n "\$curr_npm" ] && [ "\$latest_npm" != "\$curr_npm" ]; then
+                update_reason="Copilot CLI: \$curr_npm -> \$latest_npm"
+            fi
+            if [ -n "\$clean_repo" ] && [ "\$clean_repo" != "\$SETUP_VERSION" ]; then
+                if [ -n "\$update_reason" ]; then
+                    update_reason="\$update_reason | Setup: v\$SETUP_VERSION -> v\$clean_repo"
+                else
+                    update_reason="Setup: v\$SETUP_VERSION -> v\$clean_repo"
+                fi
+            fi
+
+            if [ -n "\$update_reason" ]; then
+                echo "\$update_reason" > "\$CHECK_FILE"
             else
                 rm -f "\$CHECK_FILE"
             fi
         fi
-    ) >/dev/null 2>&1 &
+    fi
+
+    if [ -f "\$CHECK_FILE" ]; then
+        avail_ver="\$(cat "\$CHECK_FILE" 2>/dev/null || true)"
+        if [ -n "\$avail_ver" ]; then
+            echo "" >&2
+            echo -e "\033[1;33m⚠ Actualización disponible:\033[0m \$avail_ver" >&2
+            do_update="n"
+            if [ -r /dev/tty ]; then
+                read -r -p "¿Deseas actualizar ahora? [s/N]: " do_update < /dev/tty || do_update="n"
+            else
+                read -r -p "¿Deseas actualizar ahora? [s/N]: " do_update || do_update="n"
+            fi
+            if [[ "\$do_update" =~ ^[sSyY] ]]; then
+                echo "" >&2
+                if [ -x "\$PREFIX/bin/copilot-termux-update" ]; then
+                    "\$PREFIX/bin/copilot-termux-update"
+                elif [ -f "\$HOME/copilot-termux-setup/setup.sh" ]; then
+                    bash "\$HOME/copilot-termux-setup/setup.sh" install
+                fi
+                echo "" >&2
+                echo "Iniciando Copilot..." >&2
+                rm -f "\$CHECK_FILE"
+                exec "\$PREFIX/bin/copilot" "\$@"
+            else
+                rm -f "\$CHECK_FILE"
+            fi
+        fi
+    fi
 fi
 
 # Ensure any newly extracted/updated Copilot version has the Termux preload hook
@@ -526,7 +584,7 @@ run_self_test() {
     run_cmd "Shell wrapper present" test -x "$SHELL_WRAPPER"
     run_cmd "Termux launcher present" test -x "$PREFIX/bin/copilot"
     run_cmd "copilot-termux-update tool present" test -x "$PREFIX/bin/copilot-termux-update"
-    run_cmd "Launcher embeds background update check" grep -q "setup_update_available" "$PREFIX/bin/copilot"
+    run_cmd "Launcher embeds update check and prompt" grep -q "setup_update_available" "$PREFIX/bin/copilot"
     run_cmd "Shell wrapper restores LD_PRELOAD, TMPDIR and DBUS guard" \
         env -u LD_PRELOAD -u TMPDIR -u DBUS_SESSION_BUS_ADDRESS "$SHELL_WRAPPER" -c \
         '[ -n "${LD_PRELOAD:-}" ] && [ "$TMPDIR" = "'"$PREFIX"'/tmp" ] && [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]'
