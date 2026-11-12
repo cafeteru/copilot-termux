@@ -14,7 +14,23 @@ If a release is not published in GitHub:
 2. Document changes under a new version heading in `CHANGELOG.md` and update `README.md` if applicable.
 3. Verify with `bash setup.sh self-test`.
 4. Open a pull request, review, and merge to `main`.
-5. The `Auto Release` GitHub Action will automatically publish the release. If it fails or is delayed, create it manually:
+5. Delete the branch after merge both in `origin` and local to keep the tree clean.
+6. The `Auto Release` GitHub Action will automatically publish the release. If it fails or is delayed, create it manually:
    ```bash
    gh release create vX.Y.Z --title "vX.Y.Z" --notes "<Release Notes>"
    ```
+
+## Branch Management & Clean Up
+Always delete working branches immediately after merging a PR (both on `origin` and locally) to maintain a clean git tree:
+- **Remote**: Delete branch from `origin`:
+  ```bash
+  git push origin --delete <branch>
+  # Alternatively, use gh cli flag when merging
+  gh pr merge <pr-number> --delete-branch
+  ```
+- **Local**: Switch to `main`, pull latest changes, and delete local branch:
+  ```bash
+  git checkout main
+  git pull origin main
+  git branch -d <branch>
+  ```
